@@ -1,0 +1,60 @@
+from transformers import pipeline
+from huggingface_hub import login
+from diffusers import StableDiffusionPipeline
+import gradio as gr
+import torch
+
+# Log in to Hugging Face (replace with your token)
+login("")
+
+# Load Hugging Face models
+speech_to_text = pipeline("automatic-speech-recognition", model="openai/whisper-base")
+
+# Load Stable Diffusion model using diffusers
+text_to_image = StableDiffusionPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16
+).to("cuda" if torch.cuda.is_available() else "cpu")
+
+# Speech-to-text function
+def transcribe_audio(audio_file):
+    try:
+        result = speech_to_text(audio_file)
+        transcription = result["text"]
+        return transcription
+    except Exception as e:
+        return f"Error in transcription: {str(e)}"
+
+# Text-to-image function
+def generate_image_from_text(text):
+    try:
+        image = text_to_image(text).images[0]  # Generate one image
+        return image
+    except Exception as e:
+        return f"Error in image generation: {str(e)}"
+
+# Combined processing function
+def process_audio_and_generate_image(audio_file):
+    transcription = transcribe_audio(audio_file)
+    if "Error" in transcription:
+        return None, transcription
+
+    image = generate_image_from_text(transcription)
+    if isinstance(image, str) and "Error" in image:
+        return None, image
+
+    return image, transcription
+
+# Gradio interface
+iface = gr.Interface(
+    fn=process_audio_and_generate_image,
+    inputs=gr.Audio(type="filepath", label="Upload audio file (WAV/MP3)"),
+    outputs=[
+        gr.Image(label="Generated Image"),
+        gr.Textbox(label="Transcription")
+    ],
+    title="Speech-to-Text and Image Generation",
+    description="Upload an audio file to transcribe speech to text, and then generate an image based on the transcription.",
+)
+
+# Launch the interface
+iface.launch(share=True)
